@@ -19,9 +19,9 @@ impl TryFrom<char> for Move {
 
     fn try_from(value: char) -> Result<Self, Self::Error> {
         match value {
-            'A' | 'X' => Ok(Move::Rock),
-            'B' | 'Y' => Ok(Move::Paper),
-            'C' | 'Z' => Ok(Move::Scissors),
+            'A' => Ok(Move::Rock),
+            'B' => Ok(Move::Paper),
+            'C' => Ok(Move::Scissors),
             _ => Err(eyre!("not a valid move: {value:?}")),
         }
     }
@@ -38,39 +38,45 @@ impl Points for Move {
 }
 
 impl Move {
-    fn beats(self, other: Move) -> bool {
-        matches!(
-            (self, other),
-            (Self::Rock, Self::Scissors)
-                | (Self::Paper, Self::Rock)
-                | (Self::Scissors, Self::Paper)
-        )
-    }
-
-    fn outcome(self, theirs: Move) -> Outcome {
-        if self.beats(theirs) {
-            Outcome::Win
-        } else if theirs.beats(self) {
-            Outcome::Loss
-        } else {
-            Outcome::Draw
+    fn with_outcome(self, outcome: Outcome) -> Self {
+        match (self, outcome) {
+            (_, Outcome::Draw) => self,
+            (Self::Rock, Outcome::Loss) => Self::Scissors,
+            (Self::Rock, Outcome::Win) => Self::Paper,
+            (Self::Paper, Outcome::Loss) => Self::Rock,
+            (Self::Paper, Outcome::Win) => Self::Scissors,
+            (Self::Scissors, Outcome::Loss) => Self::Paper,
+            (Self::Scissors, Outcome::Win) => Self::Rock,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Outcome {
-    Win,
-    Draw,
     Loss,
+    Draw,
+    Win,
 }
 
 impl Points for Outcome {
     fn points(&self) -> usize {
         match self {
-            Self::Win => 6,
-            Self::Draw => 3,
             Self::Loss => 0,
+            Self::Draw => 3,
+            Self::Win => 6,
+        }
+    }
+}
+
+impl TryFrom<char> for Outcome {
+    type Error = Report;
+
+    fn try_from(c: char) -> Result<Self, Report> {
+        match c {
+            'X' => Ok(Self::Loss),
+            'Y' => Ok(Self::Draw),
+            'Z' => Ok(Self::Win),
+            _ => Err(eyre!("not a valid outcome: {c}")),
         }
     }
 }
@@ -78,13 +84,7 @@ impl Points for Outcome {
 #[derive(Debug, Clone, Copy)]
 struct Round {
     theirs: Move,
-    ours: Move,
-}
-
-impl Round {
-    fn outcome(self) -> Outcome {
-        self.ours.outcome(self.theirs)
-    }
+    outcome: Outcome,
 }
 
 impl FromStr for Round {
@@ -92,20 +92,21 @@ impl FromStr for Round {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut chars = s.chars();
-        let (Some(theirs), Some(' '), Some(ours), None) = (chars.next(), chars.next(), chars.next(), chars.next()) else {
+        let (Some(theirs), Some(' '), Some(outcome), None) = (chars.next(), chars.next(), chars.next(), chars.next()) else {
             return Err(eyre!("expected <theirs>SP<ours>EOF, got {s:?}"));
         };
 
         Ok(Self {
             theirs: theirs.try_into()?,
-            ours: ours.try_into()?,
+            outcome: outcome.try_into()?,
         })
     }
 }
 
 impl Points for Round {
     fn points(&self) -> usize {
-        self.ours.points() + self.outcome().points()
+        let ours = self.theirs.with_outcome(self.outcome);
+        ours.points() + self.outcome.points()
     }
 }
 
