@@ -1,0 +1,6 @@
+[workspace]
+members = ["day*"]
+
+[workspace.dependencies]
+color-eyre = "0.6.2"
+itertools = "0.10.5"
