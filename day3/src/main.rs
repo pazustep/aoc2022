@@ -1,26 +1,27 @@
-use std::collections::HashSet;
-
-use color_eyre::eyre::eyre;
+use im::HashSet;
 use item::Item;
+use itertools::Itertools;
 
 fn main() -> color_eyre::Result<()> {
-    let sum = include_str!("input.txt")
+    let sum: usize = include_str!("input.txt")
         .lines()
-        .map(|line| -> color_eyre::Result<_> {
-            let (first, second) = line.split_at(line.len() / 2);
-
-            let first_items = first
-                .bytes()
-                .map(Item::try_from)
-                .collect::<Result<HashSet<_>, _>>()?;
-
-            itertools::process_results(second.bytes().map(Item::try_from), |mut it| {
-                it.find(|&item| first_items.contains(&item))
-                    .map(|item| dbg!(item.priority()))
-                    .ok_or_else(|| eyre!("compartments have no items in common"))
-            })?
+        .map(|line| {
+            line.bytes()
+                .map(|b| b.try_into().unwrap())
+                .collect::<HashSet<Item>>()
         })
-        .sum::<color_eyre::Result<usize>>()?;
+        .chunks(3)
+        .into_iter()
+        .map(|chunks| {
+            chunks
+                .reduce(|a, b| a.intersection(b))
+                .expect("we always have 3 chunks")
+                .iter()
+                .next()
+                .expect("problem statement says there is always one item in common")
+                .priority()
+        })
+        .sum();
 
     dbg!(sum);
     Ok(())
