@@ -4,14 +4,16 @@ fn main() {
     let max = include_str!("input.txt")
         .lines()
         .map(|v| v.parse::<u64>().ok())
-        .batching(|it| {
-            let mut sum = None;
-            while let Some(Some(v)) = it.next() {
-                sum = Some(sum.unwrap_or(0) + v);
-            }
-            sum
+        .coalesce(|a, b| match (a, b) {
+            (None, None) => Ok(None),
+            (None, Some(b)) => Ok(Some(b)),
+            (Some(a), Some(b)) => Ok(Some(a + b)),
+            (Some(a), None) => Err((Some(a), None)),
         })
-        .max();
+        .flatten()
+        .sorted_by_key(|&v| std::cmp::Reverse(v))
+        .take(3)
+        .sum::<u64>();
 
     println!("{max:?}");
 }
