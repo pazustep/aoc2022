@@ -24,7 +24,7 @@ fn main() {
 }
 
 #[repr(transparent)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 struct SupplyCrate(char);
 
 impl std::fmt::Display for SupplyCrate {
@@ -41,23 +41,20 @@ struct LoadingDock {
 impl LoadingDock {
     #[allow(clippy::expect_fun_call)]
     fn apply(&mut self, command: Command) {
-        for _ in 0..command.count {
-            let from = self
-                .stacks
-                .get_mut(command.from - 1)
-                .expect(&format!("can't find from stack {}", command.from));
+        let from = self
+            .stacks
+            .get_mut(command.from - 1)
+            .expect(&format!("can't find from stack {}", command.from));
 
-            let elem = from
-                .pop()
-                .expect(&format!("stack {} is empty", command.from));
+        let start = from.len() - command.count;
+        let mut elems = from.drain(start..).collect::<Vec<_>>();
 
-            let to = self
-                .stacks
-                .get_mut(command.to - 1)
-                .expect(&format!("can't find to stack {}", command.to));
+        let to = self
+            .stacks
+            .get_mut(command.to - 1)
+            .expect(&format!("can't find to stack {}", command.to));
 
-            to.push(elem);
-        }
+        to.append(&mut elems);
     }
 }
 
