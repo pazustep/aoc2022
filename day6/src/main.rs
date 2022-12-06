@@ -1,19 +1,18 @@
 use itertools::Itertools;
 
+const WINDOW_SIZE: usize = 4;
+
 fn main() {
     let input = include_str!("input.txt");
-    let start = find_start_of_packet(input);
-    println!("start of packet: {start:?}");
+    let idx = find_start_of_packet(input);
+    println!("start of packet: {idx:?}");
 }
 
 fn find_start_of_packet(input: &str) -> Option<usize> {
-    for (idx, window) in input.as_bytes().windows(4).enumerate() {
-        if window.iter().all_unique() {
-            return Some(idx + 4);
-        }
-    }
-
-    None
+    input.as_bytes()
+        .windows(WINDOW_SIZE)
+        .position(|slice| slice.iter().all_unique())
+        .map(|idx| idx + WINDOW_SIZE)
 }
 
 #[cfg(test)]
