@@ -1,7 +1,6 @@
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::vec;
 
 use camino::Utf8PathBuf;
-use indexmap::IndexMap;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
@@ -11,57 +10,39 @@ use nom::{
 };
 
 fn main() {
-    let lines = include_str!("input.txt")
+    let mut lines = include_str!("input.txt")
         .lines()
         .map(|l| all_consuming(parse_line)(l).finish().unwrap().1);
 
-    let root = Rc::new(RefCell::new(Node::default()));
-    let mut node = root.clone();
+    let root = FsEntry::root().build(&mut lines);
+    dbg!(&root);
 
-    for line in lines {
-        println!("{line:?}");
-        match line {
-            Line::Command(cmd) => match cmd {
-                Command::Ls => {
-                    // ignore
-                }
-                Command::Cd(path) => match path.as_str() {
-                    "/" => {
-                        // ignore
-                    }
-                    ".." => {
-                        let parent = node.borrow().parent.clone().unwrap();
-                        node = parent;
-                    }
-                    _ => {
-                        let child = node.borrow_mut().children.entry(path).or_default().clone();
-                        node = child;
-                    }
-                },
-            },
-            Line::Entry(entry) => match entry {
-                Entry::Dir(dir) => {
-                    let entry = node.borrow_mut().children.entry(dir).or_default().clone();
-                    entry.borrow_mut().parent = Some(node.clone());
-                }
-                Entry::File(size, file) => {
-                    let entry = node.borrow_mut().children.entry(file).or_default().clone();
-                    entry.borrow_mut().size = size as usize;
-                    entry.borrow_mut().parent = Some(node.clone());
-                }
-            },
-        }
-    }
-
-    let sum = all_dirs(root)
-        .map(|d| d.borrow().total_size())
+    let sum = root
+        .all_dirs()
+        .map(|d| d.total_size())
         .filter(|&s| s <= 100_000)
-        .inspect(|s| {
-            dbg!(s);
-        })
         .sum::<u64>();
 
     dbg!(sum);
+
+    let total_space = 70_000_000_u64;
+    let used_space = root.total_size();
+    let free_space = total_space.checked_sub(dbg!(used_space)).unwrap();
+    let needed_free_space = 30_000_000_u64;
+    let minimum_space_to_free = needed_free_space.checked_sub(free_space).unwrap();
+
+    let removed_dir_size = root
+        .children
+        .iter()
+        .filter(|&n| !n.children.is_empty())
+        .map(|n| n.total_size())
+        .filter(|&s| s >= minimum_space_to_free)
+        .inspect(|s| {
+            dbg!(s);
+        })
+        .min();
+
+    dbg!(removed_dir_size);
 }
 
 fn parse_path(i: &str) -> IResult<&str, Utf8PathBuf> {
@@ -138,80 +119,73 @@ fn parse_line(i: &str) -> IResult<&str, Line> {
     ))(i)
 }
 
-type NodeHandle = Rc<RefCell<Node>>;
+#[derive(Debug)]
+struct FsEntry {
+    size: u64,
+    #[allow(dead_code)]
+    path: Utf8PathBuf,
+    children: Vec<FsEntry>,
+}
 
-struct PrettyNode<'a>(&'a NodeHandle);
-
-impl<'a> fmt::Debug for PrettyNode<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let this = self.0.borrow();
-
-        if this.size == 0 {
-            writeln!(f, "(dir)")?;
-        } else {
-            writeln!(f, "(file, size={})", this.size)?;
+impl FsEntry {
+    fn root() -> Self {
+        Self {
+            size: 0,
+            path: "/".into(),
+            children: vec![],
         }
+    }
 
-        for (name, child) in &this.children {
-            for (index, line) in format!("{:?}", PrettyNode(child)).lines().enumerate() {
-                if index == 0 {
-                    writeln!(f, "{name} {line}")?;
-                } else {
-                    writeln!(f, "  {line}")?;
+    fn new(path: &Utf8PathBuf) -> Self {
+        Self::new_with_size(0, path)
+    }
+
+    fn new_with_size(size: u64, path: &Utf8PathBuf) -> Self {
+        Self {
+            size,
+            path: path.clone(),
+            children: vec![],
+        }
+    }
+
+    fn total_size(&self) -> u64 {
+        self.size + self.children.iter().map(|c| c.total_size()).sum::<u64>()
+    }
+
+    fn all_dirs(&self) -> Box<dyn Iterator<Item = &FsEntry> + '_> {
+        Box::new(
+            std::iter::once(self).chain(
+                self.children
+                    .iter()
+                    .filter(|c| !c.children.is_empty())
+                    .flat_map(|c| c.all_dirs()),
+            ),
+        )
+    }
+
+    fn build(mut self, it: &mut dyn Iterator<Item = Line>) -> Self {
+        while let Some(line) = it.next() {
+            match line {
+                Line::Command(Command::Cd(path)) => match path.as_str() {
+                    "/" => {
+                        // ignore
+                    }
+                    ".." => break,
+                    _ => {
+                        let node = FsEntry::new(&path);
+                        self.children.push(node.build(it));
+                    }
+                },
+                Line::Entry(Entry::File(size, path)) => {
+                    let node = FsEntry::new_with_size(size, &path);
+                    self.children.push(node);
+                }
+                _ => {
+                    // ignore
                 }
             }
         }
 
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-struct Node {
-    size: usize,
-    children: IndexMap<Utf8PathBuf, NodeHandle>,
-    parent: Option<NodeHandle>,
-}
-
-impl Node {
-    fn is_dir(&self) -> bool {
-        self.size == 0 && !self.children.is_empty()
-    }
-
-    fn total_size(&self) -> u64 {
-        self.children
-            .values()
-            .map(|child| child.borrow().total_size())
-            .sum::<u64>()
-            + self.size as u64
-    }
-}
-
-fn all_dirs(n: NodeHandle) -> Box<dyn Iterator<Item = NodeHandle>> {
-    #[allow(clippy::needless_collect)]
-    let children = n.borrow().children.values().cloned().collect::<Vec<_>>();
-
-    Box::new(
-        std::iter::once(n).chain(
-            children
-                .into_iter()
-                .filter_map(|c| {
-                    if c.borrow().is_dir() {
-                        Some(all_dirs(c))
-                    } else {
-                        None
-                    }
-                })
-                .flatten(),
-        ),
-    )
-}
-
-impl fmt::Debug for Node {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Node")
-            .field("size", &self.size)
-            .field("children", &self.children)
-            .finish()
+        self
     }
 }
