@@ -1,13 +1,7 @@
 fn main() {
-    let input = include_str!("input.txt");
-    let forest = Forest::parse(input);
-
-    let visible_count = forest
-        .trees()
-        .filter(|tree| forest.is_visible(tree))
-        .count();
-
-    println!("number of visible trees: {visible_count}");
+    let forest = Forest::parse(include_str!("input.txt"));
+    println!("number of visible trees: {}", forest.visible_tree_count());
+    println!("best scenic score: {}", forest.best_scenic_score().unwrap());
 }
 
 struct Tree {
@@ -28,6 +22,14 @@ impl Forest {
             .collect();
 
         Self { trees }
+    }
+
+    fn visible_tree_count(&self) -> usize {
+        self.trees().filter(|tree| self.is_visible(tree)).count()
+    }
+
+    fn best_scenic_score(&self) -> Option<u32> {
+        self.trees().map(|tree| self.scenic_score(&tree)).max()
     }
 
     fn trees(&self) -> impl Iterator<Item = Tree> + '_ {
@@ -93,5 +95,100 @@ impl Forest {
         }
 
         true
+    }
+
+    fn scenic_score(&self, tree: &Tree) -> u32 {
+        self.scenic_score_top(tree)
+            * self.scenic_score_left(tree)
+            * self.scenic_score_right(tree)
+            * self.scenic_score_bottom(tree)
+    }
+
+    fn scenic_score_top(&self, tree: &Tree) -> u32 {
+        let mut score = 0;
+
+        for iy in (0..tree.y).rev() {
+            score += 1;
+            if *self.trees.get(iy).unwrap().get(tree.x).unwrap() >= tree.height {
+                break;
+            }
+        }
+
+        score
+    }
+
+    fn scenic_score_bottom(&self, tree: &Tree) -> u32 {
+        let mut score = 0;
+
+        for iy in (tree.y + 1)..(self.trees.len()) {
+            score += 1;
+            if *self.trees.get(iy).unwrap().get(tree.x).unwrap() >= tree.height {
+                break;
+            }
+        }
+
+        score
+    }
+
+    fn scenic_score_left(&self, tree: &Tree) -> u32 {
+        let mut score = 0;
+        let row = self.trees.get(tree.y).unwrap();
+
+        for ix in (0..tree.x).rev() {
+            score += 1;
+            if *row.get(ix).unwrap() >= tree.height {
+                break;
+            }
+        }
+
+        score
+    }
+
+    fn scenic_score_right(&self, tree: &Tree) -> u32 {
+        let mut score = 0;
+        let row = self.trees.get(tree.y).unwrap();
+
+        for ix in (tree.x + 1)..row.len() {
+            score += 1;
+            if *row.get(ix).unwrap() >= tree.height {
+                break;
+            }
+        }
+
+        score
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scenic_score_first_example() {
+        let forest = Forest::parse(include_str!("sample-input.txt"));
+
+        let tree = Tree {
+            y: 1,
+            x: 2,
+            height: 5,
+        };
+
+        assert_eq!(forest.scenic_score_top(&tree), 1);
+        assert_eq!(forest.scenic_score_left(&tree), 1);
+        assert_eq!(forest.scenic_score_right(&tree), 2);
+        assert_eq!(forest.scenic_score_bottom(&tree), 2);
+        assert_eq!(forest.scenic_score(&tree), 4);
+    }
+
+    #[test]
+    fn visible_tree_count() {
+        let forest = Forest::parse(include_str!("sample-input.txt"));
+        assert_eq!(forest.visible_tree_count(), 21);
+    }
+
+    #[test]
+    fn best_scenic_score() {
+        let forest = Forest::parse(include_str!("sample-input.txt"));
+        assert_eq!(forest.best_scenic_score(), Some(8));
     }
 }
