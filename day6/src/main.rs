@@ -9,7 +9,8 @@ fn main() {
 }
 
 fn find_start_of_packet(input: &str) -> Option<usize> {
-    input.as_bytes()
+    input
+        .as_bytes()
         .windows(WINDOW_SIZE)
         .position(|slice| slice.iter().all_unique())
         .map(|idx| idx + WINDOW_SIZE)
